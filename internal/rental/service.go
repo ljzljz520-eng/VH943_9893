@@ -50,9 +50,6 @@ func (s *Service) AddToCart(ctx context.Context, cart *Cart, itemID string, quan
 	if err != nil {
 		return err
 	}
-	if item.Available < quantity {
-		return fmt.Errorf("insufficient availability")
-	}
 	if err := cart.AddLine(item, quantity, days); err != nil {
 		return err
 	}
@@ -75,6 +72,16 @@ func (s *Service) CreateRental(ctx context.Context, cart Cart, actor string) (do
 			return err
 		}
 		for _, line := range record.Lines {
+			// Re-check rentability inside the transaction so an item that slipped
+			// into maintenance after the cart was built is refused here and the
+			// whole rental rolls back, leaving the maintenance state intact.
+			item, err := s.repo.GetItemForUpdate(ctx, tx, line.ItemID)
+			if err != nil {
+				return err
+			}
+			if err := rentable(item, line.Quantity); err != nil {
+				return err
+			}
 			if err := s.repo.InsertRentalLine(ctx, tx, record.ID, line); err != nil {
 				return err
 			}

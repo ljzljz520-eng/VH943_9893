@@ -41,6 +41,14 @@ func (r *Repository) GetItem(ctx context.Context, id string) (domain.InventoryIt
 	return scanItem(r.db.QueryRowContext(ctx, `SELECT id, sku, name, category, daily_rate, deposit, stock, available, maintenance_status, storage_bin, listed, version FROM inventory_items WHERE id=?`, id))
 }
 
+// GetItemForUpdate reads an inventory item through the given transaction so the
+// caller can validate state on the same snapshot it will mutate. SQLite serializes
+// writes at the connection level, so reading via the transaction's handle is
+// sufficient to observe an uncommitted, in-progress change within WithTx.
+func (r *Repository) GetItemForUpdate(ctx context.Context, tx *sql.Tx, id string) (domain.InventoryItem, error) {
+	return scanItem(tx.QueryRowContext(ctx, `SELECT id, sku, name, category, daily_rate, deposit, stock, available, maintenance_status, storage_bin, listed, version FROM inventory_items WHERE id=?`, id))
+}
+
 func (r *Repository) ListItems(ctx context.Context, category domain.Category, onlyListed bool) ([]domain.InventoryItem, error) {
 	query := `SELECT id, sku, name, category, daily_rate, deposit, stock, available, maintenance_status, storage_bin, listed, version FROM inventory_items WHERE (? = '' OR category=?) AND (? = 0 OR listed=1) ORDER BY category, name`
 	rows, err := r.db.QueryContext(ctx, query, category, category, boolInt(onlyListed))
